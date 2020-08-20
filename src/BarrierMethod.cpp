@@ -1,0 +1,332 @@
+//
+// Created by Carlos 12/08/20
+//
+
+#include "../headers/BarrierMethod.h"
+
+BarrierMethod::BarrierMethod(Graph *graph) {
+    if (graph != nullptr) {
+        this->graph = graph;
+       	initialize();
+    } else exit(EXIT_FAILURE);
+}
+
+void BarrierMethod::initialize() {
+    int o, d, n = graph->getN(), m = graph->getM();
+    try {
+
+        env.set("LogFile", "MS_mip.log");
+        env.start();
+
+        f = vector<vector<vector<GRBVar>>>(n, vector<vector<GRBVar>>(n, vector<GRBVar>(n)));
+        y = vector<vector<GRBVar>>(n, vector<GRBVar>(n));
+        z = vector<GRBVar>(n);
+
+        char name[30];
+        for (o = 0; o < n; o++) {
+            for (auto *arc : graph->arcs[o]) {
+                d = arc->getD();
+                sprintf(name, "y_%d_%d", o, d);
+                y[o][d] = model.addVar(0.0, 1.0, 0, GRB_CONTINUOUS, name);
+
+                for (int k: graph->DuS) {
+                    sprintf(name, "f_%d_%d_%d", o, d, k);
+                    if (!graph->removedF[o][d][k])
+                        this->f[o][d][k] = model.addVar(0.0, 1.0, 0, GRB_CONTINUOUS, name);
+	                else this->f[o][d][k] = model.addVar(0.0, 0.0, 0, GRB_CONTINUOUS, name);
+            	}
+            }
+        }
+
+        for (auto i : graph->terminals) {
+            sprintf(name, "z_%d", i);
+            z[i] = model.addVar(0.0, 1.0, 0, GRB_CONTINUOUS, name);
+        }
+
+        model.update();
+    } catch (GRBException &ex) {
+        cout << ex.getMessage() << endl;
+        cout << ex.getErrorCode() << endl;
+        exit(EXIT_FAILURE);
+    }
+}
+
+void BarrierMethod::initModel() {
+    cout << "Model Created!" << endl;
+    objectiveFunction();
+    rootFlow(), flowConservation(), terminalsFlow();
+    relXandY(), maxArcs();
+    limDelayAndJitter();
+    limVariation();
+    primeToTerminals();
+    nonTerminalsLeafs();
+}
+
+void BarrierMethod::objectiveFunction() {
+    GRBLinExpr objective;
+    for (auto k : graph->terminals) objective += z[k];
+    model.setObjective(objective, GRB_MINIMIZE);
+    cout << "Objective Function was added successfully!" << endl;
+}
+
+void BarrierMethod::rootFlow() {
+    int o, d, root = graph->getRoot();
+    for (auto k : graph->terminals) {
+        GRBLinExpr flowExpr, rootExpr;
+        for (o = 0; o < graph->getN(); o++) {
+            for (auto *arc : graph->arcs[o]) {
+                d = arc->getD();
+                if (o == root) flowExpr += f[root][d][k];
+                else if (d == root) rootExpr += f[o][root][k];
+            }
+        }
+        model.addConstr((flowExpr - rootExpr) == 1, "root_flow_all_" + to_string(k));
+    }
+    model.update();
+    cout << "Flow on root node" << endl;
+}
+
+void BarrierMethod::flowConservation() {
+    int o, d, root = graph->getRoot();
+    for (auto k : graph->DuS) {
+        for (int j = 0; j < graph->getN(); j++) {
+            if (j != root && j != k) {
+                GRBLinExpr flowIn, flowOut;
+                for (o = 0; o < graph->getN(); o++) {
+                    for (auto *arc : graph->arcs[o]) {
+                        d = arc->getD();
+                        if (o == j) flowOut += f[j][d][k];
+                        if (d == j) flowIn += f[o][j][k];
+                    }
+                }
+                model.addConstr((flowIn - flowOut) == 0, "flow_conservation_" + to_string(j) + "_" + to_string(k));
+            }
+        }
+    }
+    model.update();
+    cout << "Flow conservation" << endl;
+}
+
+void BarrierMethod::terminalsFlow() {
+    int o, d;
+    for (auto k : graph->DuS) {
+        GRBLinExpr flowIn, flowOut;
+        for (o = 0; o < graph->getN(); o++) {
+            for (auto *arc : graph->arcs[o]) {
+                d = arc->getD();
+                if (o == k) flowOut += f[k][d][k];
+                if (d == k) flowIn += f[o][k][k];
+            }
+        }
+        model.addConstr((flowOut - flowIn) == -1, "flow_on_terminals_" + to_string(k));
+    }
+    model.update();
+    cout << "Flow on terminals" << endl;
+}
+
+void BarrierMethod::relXandY() {
+    int o, d;
+    for (o = 0; o < graph->getN(); o++) {
+        for (auto *arc : graph->arcs[o]) {
+            d = arc->getD();
+            for (auto k : graph->DuS) {
+	      model.addConstr(f[o][d][k] <= y[o][d], "f_and_y_relation_" + to_string(o) + "_" + to_string(d) + "_" + to_string(k));
+	    }
+        }
+    }
+    model.update();
+    cout << "f and Y relation" << endl;
+}
+
+void BarrierMethod::maxArcs() {
+    GRBLinExpr totalArcs;
+    for (int o = 0; o < graph->getN(); o++) {
+        for (auto *arc : graph->arcs[o]) {
+            totalArcs += y[arc->getO()][arc->getD()];
+        }
+    }
+    model.addConstr(totalArcs == (graph->getN() - 1), "maximum_of_arcs");
+    
+    model.update();
+    cout << "maximum of arcs in the tree" << endl;
+}
+
+void BarrierMethod::limDelayAndJitter() {
+  int o, d, paramDelay, paramJitter;
+    // Delay
+    for (auto k : graph->terminals) {
+      GRBLinExpr limDelay;
+      for (o = 0; o < graph->getN(); o++) {
+	for (auto *arc : graph->arcs[o]) {
+	  d = arc->getD();
+	  limDelay += arc->getDelay() * f[o][d][k];
+	}
+      }
+      paramDelay = graph->getParamDelay();
+      model.addConstr(limDelay <= (paramDelay + (graph->getBigMDelay() - paramDelay) * z[k]), "delay_limit_" + to_string(k));
+    }
+
+    cout << "Delay, krai" << endl;
+    
+    for (auto k : graph->terminals) {
+      GRBLinExpr limJitter;
+      for (o = 0; o < graph->getN(); o++) {
+	for (auto *arc : graph->arcs[o]) {
+	  d = arc->getD();
+	  limJitter += arc->getJitter() * f[o][d][k];
+	}
+      }
+      paramJitter = graph->getParamJitter();      
+      model.addConstr(limJitter <= (paramJitter + (graph->getBigMJitter() - paramJitter) * z[k]), "jitter_limit_" + to_string(k));
+    }
+    
+    model.update();
+    cout << "Delay and Jitter limits" << endl;
+}
+
+void BarrierMethod::limVariation() {
+    int o, d, bigMK, bigML;
+    for (auto k : graph->terminals) {
+        for (auto l : graph->terminals) {
+            if (k != l) {
+                GRBLinExpr delayVariation;
+                for (o = 0; o < graph->getN(); o++) {
+                    for (auto *arc : graph->arcs[o]) {
+                        d = arc->getD();
+                        delayVariation += arc->getDelay() * (f[o][d][k] - f[o][d][l]);
+                	}
+                }
+                bigMK = graph->getBigMDelay() - min(graph->getShpTerminal(l) + graph->getParamVariation(), graph->getParamDelay());
+                bigML = graph->getParamDelay() - graph->getParamVariation() - graph->getShpTerminal(l);
+                model.addConstr(delayVariation <= graph->getParamVariation() + bigMK * z[k] + bigML * z[l],
+                                "limit_of_variation_between_pairs_" + to_string(k) + "_" + to_string(l));
+            }
+        }
+    }
+    model.update();
+    cout << "Delay variation limits" << endl;
+}
+
+void BarrierMethod::primeToTerminals() {
+    for (auto k : graph->terminals)
+       model.addConstr(z[k] >= f[0][k][k], "prime_to_terminals_" + to_string(k));
+    model.update();
+    cout << "S' to terminals" << endl;
+}
+
+void BarrierMethod::nonTerminalsLeafs() {
+    model.addConstr(y[graph->getRoot()][0] == 1);
+    for (auto q : graph->DuS) {
+        for (auto e : graph->DuS) {
+            if (e != q) {
+                model.addConstr(f[0][q][e] <= 0, "non_terminals_leafs_" + to_string(q) + "_" + to_string(e));
+            }
+        }
+    }
+    model.update();
+    cout << "Non terminals are leafs" << endl;
+}
+// Relation |D| + 2|DuS| -> |E| x |DuS|
+// Delay and Jitter Relation + 2 -> |D|
+// Variation DnJ + |D| x |D|-1
+// Leafs DnJ + |D| + 1 + |DuS| x (|DuS|-1)
+void BarrierMethod::solve() {
+    try {
+        model.set("TimeLimit", "3600.0");
+	model.set("OutputFlag", "0");
+	model.set(GRB_IntParam_PreDual, 1);
+	model.set("Method", "2");
+	model.set("Crossover", "0");
+	model.update();
+        model.write("barrier_model.lp");
+        model.optimize();
+    } catch (GRBException &ex) {
+        cout << ex.getMessage() << endl;
+	exit(0);
+    }
+}
+
+void BarrierMethod::getMultipliersDelay(vector<double> &multipliersDelay) {
+  int k, dus = graph->DuS.size(), term = graph->terminals.size(), m = 0, n = graph->getN();
+  for (int i = 0; i < n; i++) m += graph->arcs[i].size();
+  
+  int start = term + dus + ((n-2) * dus) + (m * dus) + 1;
+  
+  for (int c = start; c < start + term; c++) {
+    auto constr = model.getConstr(c);
+    string text = constr.get(GRB_StringAttr_ConstrName);
+    vector<string> result;
+    boost::split(result, text, boost::is_any_of("_"));
+    stringstream kc(result[2]);
+    kc >> k;
+    multipliersDelay[k] = abs(constr.get(GRB_DoubleAttr_Pi));
+  }
+}
+
+void BarrierMethod::getMultipliersJitter(vector<double> &multipliersJitter){
+  int k, dus = graph->DuS.size(), term = graph->terminals.size(), m = 0, n = graph->getN();
+  for (int i = 0; i < n; i++) m += graph->arcs[i].size();
+  
+  int start = 2 * term + dus + ((n-2) * dus) + (m * dus) + 1;
+
+  for (int c = start; c < start + term; c++) {
+    auto constr = model.getConstr(c);
+    string text = constr.get(GRB_StringAttr_ConstrName);
+    vector<string> result;
+    boost::split(result, text, boost::is_any_of("_"));
+    stringstream kc(result[2]);
+    kc >> k;
+    multipliersJitter[k] = abs(constr.get(GRB_DoubleAttr_Pi));
+  }
+}
+
+void BarrierMethod::getMultipliersVariation(vector<vector<double>> &multipliersVar){
+  int l, k, dus = graph->DuS.size(), term = graph->terminals.size(), m = 0, n = graph->getN();
+  for (int i = 0; i < n; i++) m += graph->arcs[i].size();
+  
+  int start = 3 * term + dus + ((n-2) * dus) + (m * dus) + 1;
+
+  for (int c = start; c < start + (term * (term-1)); c++) {
+    auto constr = model.getConstr(c);
+    string text = constr.get(GRB_StringAttr_ConstrName);
+    vector<string> result;
+    boost::split(result, text, boost::is_any_of("_"));
+    stringstream kc(result[5]), kl(result[6]);
+    kc >> k; kl >> l;
+    multipliersVar[k][l] = abs(constr.get(GRB_DoubleAttr_Pi));
+  }
+}
+
+void BarrierMethod::getMultipliersRelation(vector<vector<vector<double>>> &multipliersRel){
+  int i, j, k, dus = graph->DuS.size(), term = graph->terminals.size(), n = graph->getN(), m = 0;
+  
+  for (int i = 0; i < n; i++) m += graph->arcs[i].size();
+  int start = term + dus + ((n-2) * dus);
+
+  for (int c = start; c < start + (m * dus); c++) {
+    auto constr = model.getConstr(c);
+    string text = constr.get(GRB_StringAttr_ConstrName);
+    vector<string> result;
+    boost::split(result, text, boost::is_any_of("_"));
+    stringstream ic(result[4]), jc(result[5]), kc(result[6]);
+    ic >> i; jc >> j; kc >> k;
+    multipliersRel[i][j][k] = abs(constr.get(GRB_DoubleAttr_Pi));
+  }
+}
+
+void BarrierMethod::getMultipliersLeaf(vector<vector<double>> &multipliersLeaf) {
+  int j, k, dus = graph->DuS.size(), term = graph->terminals.size(), m = 0, n = graph->getN();
+  for (int i = 0; i < n; i++) m += graph->arcs[i].size();
+  
+  int start = 4 * term + dus + ((n-2) * dus) + (m * dus) + 2 + (term * (term-1));
+
+  for (int c = start; c < start + (dus * (dus-1)); c++) {
+    auto constr = model.getConstr(c);
+    string text = constr.get(GRB_StringAttr_ConstrName);
+    vector<string> result;
+    boost::split(result, text, boost::is_any_of("_"));
+    stringstream jc(result[3]), kc(result[4]);
+    jc >> j; kc >> k;
+    multipliersLeaf[j][k] = abs(constr.get(GRB_DoubleAttr_Pi));
+  }
+}

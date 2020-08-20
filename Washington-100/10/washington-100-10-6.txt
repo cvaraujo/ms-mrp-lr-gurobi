@@ -1,0 +1,32 @@
+SECTION Comment
+CREATOR "Carlos Araujo"
+REMARK "Instance for QoS Multicast Routing Problem"
+QoS METRICS "delay, jitter, bandwidth and estimate of link duration"
+END
+
+SECTION Graph
+Nodes 10
+Edges 9
+
+E 1 2 0.020980 0.004264 304.60 6.46
+E 1 4 0.021090 0.004265 345.55 21.40
+E 1 10 0.021091 0.004265 311.72 8.92
+E 2 4 0.019622 0.003562 281.70 0.05
+E 2 10 0.020529 0.000339 501.25 3.02
+E 4 6 0.018294 0.000817 303.07 1.10
+E 4 10 0.019500 0.001102 318.87 2.10
+E 6 8 0.017453 0.002239 263.58 5.44
+E 7 9 0.020299 0.004989 331.67 0.89
+END
+
+SECTION Terminals
+Root 2
+Terminals 5
+T 8
+T 10
+T 4
+T 1
+T 6
+END
+
+EOF

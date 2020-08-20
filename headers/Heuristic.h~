@@ -1,0 +1,32 @@
+//
+// Created by Carlos on 09/08/20
+//
+
+// TODO: Revise and include the files to compute the Edmonds Algorithm
+#ifndef MS_HEU_H
+#define MS_HEU_H
+
+#include "headers/Graph.h"
+#include "headers/edmonds_optimum_branching_impl.hpp"
+#include "headers/edmonds_optimum_branching.hpp"
+
+class Heuristic {
+
+ private:
+  Graph *graph;
+  BoostGraph heuristicGraph, edmonds;
+  vector<*Arc> branchingEdges;
+   
+ public:
+  Heuristic(Graph *graph);
+
+  void runEdmonds(vector<vector<vector<double>>> &multipliersRel, vector<vector<double>> multipliersLeaf);
+
+  void updateEdmonds(vector<vector<vector<double>>> &multipliersRel, vector<vector<double>> multipliersLeaf);
+  
+  int initialHeuristic();
+
+  int subgradientHeuristic();
+}
+
+#endif // MS_HEU_H

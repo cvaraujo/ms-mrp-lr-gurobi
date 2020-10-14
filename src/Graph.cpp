@@ -129,7 +129,8 @@ Graph::Graph(string instance, string param, string outputName) {
     dijkstra_shortest_paths(preProcessing, root, predecessor_map(
             make_iterator_property_map(predecessors.begin(), get(vertex_index, preProcessing))).distance_map(
 													     make_iterator_property_map(Graph::distance.begin(), get(vertex_index, preProcessing))));
-    
+
+    cout << distance[3] << ", " << paramDelay << ", " << paramJitter << endl;
     bool isTerminal;
     for (int i = 1; i < n; ++i) {
         if (distance[i] >= numeric_limits<int>::max())
@@ -171,16 +172,14 @@ void Graph::MVE(string outputName) {
     output.open(outputName, ofstream::app);
 
     // Create graph
-    for (int i = 1; i < n; i++)
+    for (int i = 0; i < n; i++)
         add_vertex(SPPRC_Graph_Vert_Prep(i, paramDelay), graphJitterMae);
     
     for (int u = 1; u < n; ++u)
-        if (!removed[u])
-            for (auto arc : arcs[u]) 
-                if (!removed[arc->getD()] || arc->getD() != 0) {
-                    add_edge(u, arc->getD(), SPPRC_Graph_Arc_Prep(countEdges++, arc->getJitter(), arc->getDelay()), graphJitterMae);
-                    add_edge(u, arc->getD(), arc->getJitter(), graphJitterSP);
-                }
+      for (auto arc : arcs[u]) {
+	add_edge(u, arc->getD(), SPPRC_Graph_Arc_Prep(countEdges++, arc->getJitter(), arc->getDelay()), graphJitterMae);
+	add_edge(u, arc->getD(), arc->getJitter(), graphJitterSP);
+      }
 
     // Run the shortest path with resource constraints
     vector<vector<graph_traits<SPPRCGraphPrep>::edge_descriptor>> opt_solutions;
@@ -198,12 +197,12 @@ void Graph::MVE(string outputName) {
                 i,
                 opt_solutions,
                 pareto_opt,
-                spp_spp_res_cont_prep(0, 0),
+		spp_spp_res_cont_prep(0, 0),
                 ref_spprc_prep(),
                 dominance_spptw_prep(),
                 allocator<r_c_shortest_paths_label<SPPRCGraphPrep, spp_spp_res_cont_prep >>(),
                 default_r_c_shortest_paths_visitor());
-            
+
             if (pareto_opt.empty()) {
                 removed[i] = true;
                 distanceCshp[i] = paramJitter + 1;
@@ -275,14 +274,15 @@ void Graph::SAE(string outputName) {
     SPPRCGraphPrep graphDelay, graphJitter;
     vector<int> distance = vector<int>(n);
     vector<VertexDescriptor> predecessors = vector<VertexDescriptor>(n);
+    removed[0] = true;
     
-    for (i = 1; i < n; i++)
+    for (i = 0; i < n; i++)
         if (!removed[i])
             for (auto arc : arcs[i]) 
                 if (arc->getD() != 0 && !removed[arc->getD()] && !removedY[i][arc->getD()]) 
                     add_edge(i, arc->getD(), arc->getJitter(), graphJitterSP);
 
-    for (i = 1; i < n; i++) {
+    for (i = 0; i < n; i++) {
         if (removed[i]) continue;
 
         distanceJitter = vector<int>(n);

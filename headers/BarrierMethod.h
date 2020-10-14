@@ -36,9 +36,10 @@ class BarrierMethod {
     void nonTerminalsLeafs();
 
 public:
-    BarrierMethod(Graph *graph);
 
-    void initialize();
+  BarrierMethod(Graph *graph);
+  
+  void initialize();
 
     void initModel();
     

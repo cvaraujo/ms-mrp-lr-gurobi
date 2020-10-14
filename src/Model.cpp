@@ -220,6 +220,26 @@ void Model::setObjRL4() {
 
   for (auto k : graph->terminals) {
     objective += z[k];
+  }
+
+  for (auto k : graph->DuS)  {
+    for (int i = 0; i < graph->getN(); i++) {
+      for (auto *arc : graph->arcs[i]) {
+	j = arc->getD();
+	objective += multipliersRel[i][j][k] * (f[i][j][k] - y[i][j]);
+      }
+    }
+  }
+
+  for (auto q : graph->DuS) {
+    for (auto e : graph->DuS) {
+      if (q != e) objective += multipliersLeaf[q][e] * f[0][q][e];
+    }
+  }
+  
+  /*
+  for (auto k : graph->terminals) {
+    objective += z[k];
     for (auto l : graph->terminals) {
       if (k != l) {
 	bigMK = graph->getBigMDelay() - min(graph->getShpTerminal(l) + graph->getParamVariation(), graph->getParamDelay());
@@ -233,17 +253,17 @@ void Model::setObjRL4() {
       }
     }
   }
-
+  
   for (auto q : graph->DuS) {
     for (i = 0; i < n; i++) 
       for (auto *arc : graph->arcs[i]) objective += multipliersRel[i][arc->getD()][q] * (f[i][arc->getD()][q] - y[i][arc->getD()]);
     for (auto e : graph->DuS) 
       if (q != e) objective += multipliersLeaf[q][e] * (f[0][q][e]);
   }
-  
+  */
   model.setObjective(objective, GRB_MINIMIZE);
   model.update();
-  cout << "Objective function" << endl;
+  //cout << "Objective function" << endl;
 }
 
 void Model::rootFlow() {
@@ -566,7 +586,7 @@ int Model::lagrangean() {
   if (heuristics) UB = heuristic->initialHeuristic();
 
   LB = numeric_limits<short>::min();
-  firstLB = LB;
+
   firstUB = UB;
   iterBub = 0;
   
@@ -576,7 +596,7 @@ int Model::lagrangean() {
   else if (relaxNum == 3) initModel1ResJitterCshp();
   else initModel2ResCshp();
   
-  while(iter < maxIter && endTime < time) {
+  while(iter < maxIter && endTime < (time - bmTime)) {
     if (solve()) {
       if (relaxNum == 1 || relaxNum == 3) getGradientDelay(gradientDelay);
       if (relaxNum <= 2) getGradientJitter(gradientJitter);
@@ -586,8 +606,10 @@ int Model::lagrangean() {
       getGradientLeaf(gradientLeaf);
 
       objPpl = model.get(GRB_DoubleAttr_ObjVal);
-      cout << "PPL: " << objPpl << endl;
+      // cout << "PPL: " << objPpl << endl;
+      if (iter == 0) firstLB = objPpl;
       
+	
       if (objPpl > LB)
 	LB = objPpl, progress = 0, iterBlb = iter;
       else {
@@ -659,7 +681,7 @@ int Model::lagrangean() {
 	for (int q : graph->DuS)
 	  if (e != q) multipliersLeaf[q][e] = max(0.0, multipliersLeaf[q][e] + (gradientLeaf[q][e] * thetaLeaf));
 
-      cout << "(Feasible) Upper Bound = " << UB << ", (Relaxed) Lower Bound = " << LB << endl;
+      // cout << "(Feasible) Upper Bound = " << UB << ", (Relaxed) Lower Bound = " << LB << endl;
 
       if (relaxNum == 1) setObjRL1();
       else if (relaxNum == 2) setObjRL2();
@@ -669,6 +691,7 @@ int Model::lagrangean() {
       iter++;
       end = chrono::steady_clock::now();
       endTime = chrono::duration_cast<chrono::seconds>(end - start).count();
+      //      getchar();
     }
   }
 

@@ -130,7 +130,6 @@ Graph::Graph(string instance, string param, string outputName) {
             make_iterator_property_map(predecessors.begin(), get(vertex_index, preProcessing))).distance_map(
 													     make_iterator_property_map(Graph::distance.begin(), get(vertex_index, preProcessing))));
 
-    cout << distance[3] << ", " << paramDelay << ", " << paramJitter << endl;
     bool isTerminal;
     for (int i = 1; i < n; ++i) {
         if (distance[i] >= numeric_limits<int>::max())

@@ -268,7 +268,7 @@ void Model::setObjRL4() {
 
 void Model::rootFlow() {
   int o, d, root = graph->getRoot();
-  for (auto k : graph->terminals) {
+  for (auto k : graph->DuS) {
     GRBLinExpr flowExpr, rootExpr;
     for (o = 0; o < graph->getN(); o++) {
       for (auto *arc : graph->arcs[o]) {
@@ -303,8 +303,8 @@ void Model::flowConservation() {
   }
   model.update();
   cout << "Flow conservation" << endl;
-}
 
+}
 void Model::terminalsFlow() {
   int o, d;
   for (auto k : graph->DuS) {
@@ -335,7 +335,7 @@ void Model::maxArcs() {
   cout << "maximum of arcs in the tree" << endl;
 }
 
-void Model::limDelay(){
+void Model::limDelay() {
   int i, j, paramDelay;
   for (auto k : graph->terminals) {
     GRBLinExpr limDelay;
@@ -596,8 +596,9 @@ int Model::lagrangean() {
   else if (relaxNum == 3) initModel1ResJitterCshp();
   else initModel2ResCshp();
   
-  while(iter < maxIter && endTime < (time - bmTime)) {
+  while(iter < maxIter && endTime < time) {
     if (solve()) {
+
       if (relaxNum == 1 || relaxNum == 3) getGradientDelay(gradientDelay);
       if (relaxNum <= 2) getGradientJitter(gradientJitter);
 
@@ -606,10 +607,8 @@ int Model::lagrangean() {
       getGradientLeaf(gradientLeaf);
 
       objPpl = model.get(GRB_DoubleAttr_ObjVal);
-      // cout << "PPL: " << objPpl << endl;
       if (iter == 0) firstLB = objPpl;
-      
-	
+      	
       if (objPpl > LB)
 	LB = objPpl, progress = 0, iterBlb = iter;
       else {
@@ -700,18 +699,16 @@ int Model::lagrangean() {
 
 void Model::showSolution(string instance, int prepTime) {
   ofstream output;
-  output.open(instance);
-    
-  output << relaxNum << " " << lambda << " " << maxIter << " " << B << " " << time << endl;
+  output.open(instance, ofstream::app);
 
-  output << firstLB << " " << LB << " " << iterBlb << endl;
-  
-  output << firstUB << " " << UB << " " << iterBub  << endl;
+  output << "Prep. Time: " << prepTime << endl;
+  output << "First LB: " << firstLB << "\nLB: " << LB << "\nIter. LB: " << iterBlb << endl;
+  output << "First UB: " << firstUB << "\nUB: " << UB << "\nIter. UB: " << iterBub << endl;
+    
   if (LB < 0) LB = 0;
   
-  output << ceil(100 - 100 * ((int(graph->terminals.size()) - UB) / double(graph->terminals.size())))  << " " << 100 * (double(UB - ceil(LB)) / double(UB)) << endl;
-
-  output << prepTime << " " << bmTime << " " << endTime << endl;
-
+  output << "gap: " << 100 * (double(UB - ceil(LB)) / double(UB)) << endl;
+  output << "BM. Time: " << bmTime << "\nRuntime: " << endTime << endl;
+  
   output.close();
 }

@@ -225,8 +225,8 @@ void Model::setObjRL4() {
   for (auto k : graph->DuS)  {
     for (int i = 0; i < graph->getN(); i++) {
       for (auto *arc : graph->arcs[i]) {
-	j = arc->getD();
-	objective += multipliersRel[i][j][k] * (f[i][j][k] - y[i][j]);
+        j = arc->getD();
+        objective += multipliersRel[i][j][k] * (f[i][j][k] - y[i][j]);
       }
     }
   }
@@ -268,7 +268,7 @@ void Model::setObjRL4() {
 
 void Model::rootFlow() {
   int o, d, root = graph->getRoot();
-  for (auto k : graph->DuS) {
+  for (auto k : graph->terminals) {
     GRBLinExpr flowExpr, rootExpr;
     for (o = 0; o < graph->getN(); o++) {
       for (auto *arc : graph->arcs[o]) {
@@ -369,17 +369,6 @@ void Model::limJitter() {
   }
   model.update();
   cout << "Jitter limit" << endl;
-}
-
-void Model::nonTerminalsLeafs() {
-  // model.addConstr(y[graph->getRoot()][0] == 1);
-  for (auto q : graph->DuS)
-    for (auto e : graph->DuS) 
-      if (e != q) 
-	model.addConstr(f[0][q][e] == 0, "non_terminals_leafs_" + to_string(q) + "_" + to_string(e));
-
-  model.update();
-  cout << "Non terminals are leafs" << endl;
 }
 
 void Model::primeToTerminals() {
@@ -679,9 +668,20 @@ int Model::lagrangean() {
       for (int e : graph->DuS)
 	for (int q : graph->DuS)
 	  if (e != q) multipliersLeaf[q][e] = max(0.0, multipliersLeaf[q][e] + (gradientLeaf[q][e] * thetaLeaf));
-
-      // cout << "(Feasible) Upper Bound = " << UB << ", (Relaxed) Lower Bound = " << LB << endl;
-
+    
+      cout << "(Feasible) Upper Bound = " << UB << ", (Relaxed) Lower Bound = " << LB << endl;
+      for (auto k : graph->terminals)
+          if (z[k].get(GRB_DoubleAttr_X) > 0.1) {
+              cout << "K: " << k << endl;//", " << graph->getParamDelay() << ", " << graph->getParamJitter() << endl;
+              for (int i = 0; i < graph->getN(); i++)
+                  for (auto arc : graph->arcs[i]) 
+                      if (f[i][arc->getD()][k].get(GRB_DoubleAttr_X) > 0.1) { 
+                          //cout << arc->getDelay() << " - " << arc->getJitter() << endl;
+                          cout << i << " - " << arc->getD() << endl;
+                      }
+            getchar();
+        }
+    
       if (relaxNum == 1) setObjRL1();
       else if (relaxNum == 2) setObjRL2();
       else if (relaxNum == 3) setObjRL3();
@@ -690,7 +690,7 @@ int Model::lagrangean() {
       iter++;
       end = chrono::steady_clock::now();
       endTime = chrono::duration_cast<chrono::seconds>(end - start).count();
-      //      getchar();
+      getchar();
     }
   }
 

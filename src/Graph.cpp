@@ -97,6 +97,7 @@ Graph::Graph(string instance, string param, string outputName) {
             output << "Nodes: " << ++n << "\n";
             preProcessing = BoostGraph(n);
             arcs = vector<vector<Arc *>>(n, vector<Arc *>());
+            
             removed = vector<bool>(n);
             removedF = vector<vector<vector<bool >>>(n, vector<vector<bool >>(n, vector<bool>(n)));
             removedY = vector<vector<bool>>(n, vector<bool>(n));
@@ -123,12 +124,12 @@ Graph::Graph(string instance, string param, string outputName) {
         if (token == "T") fileGraph >> u, terminals.push_back(u), DuS.push_back(u);
     }
     property_map<BoostGraph, edge_weight_t>::type weightMapDelay = get(edge_weight, preProcessing);
-    vector<VertexDescriptor> predecessors = vector<VertexDescriptor>(n);
-    Graph::distance = vector<int>(n);
+    predecessors = vector<VertexDescriptor>(n);
+    distance = vector<int>(n);
 
     dijkstra_shortest_paths(preProcessing, root, predecessor_map(
             make_iterator_property_map(predecessors.begin(), get(vertex_index, preProcessing))).distance_map(
-													     make_iterator_property_map(Graph::distance.begin(), get(vertex_index, preProcessing))));
+            make_iterator_property_map(distance.begin(), get(vertex_index, preProcessing))));
 
     bool isTerminal;
     for (int i = 1; i < n; ++i) {
@@ -152,20 +153,17 @@ Graph::Graph(string instance, string param, string outputName) {
     for (int i = 0; i < n - 2; i++)
         bigMDelay += delayVector[i], bigMJitter += jitterVector[i];
 
-    output.close();
+    //output.close();
     cout << "Load graph successfully" << endl;
 }
 
 void Graph::MVE(string outputName) {
     // Moterated Vertex Elimination using delay as cost and jitter resource
     int countEdges = 0, j;
-    removedY = vector<vector<bool>>(n, vector<bool>(n));
     SPPRCGraphPrep graphJitterMae;
     BoostGraph graphJitterSP = BoostGraph(n);
     vector<int> distanceCshp = vector<int>(n), distanceAux = vector<int>(n);
     vector<vector<int>> distanceNTtoT = vector<vector<int>>(n, vector<int>(n));
-    vector<VertexDescriptor> predecessors = vector<VertexDescriptor>(n);
-    vector<int> distance = vector<int>(n);
     // Archive to save the data
     ofstream output;
     output.open(outputName, ofstream::app);
@@ -175,10 +173,12 @@ void Graph::MVE(string outputName) {
         add_vertex(SPPRC_Graph_Vert_Prep(i, paramDelay), graphJitterMae);
     
     for (int u = 1; u < n; ++u)
-      for (auto arc : arcs[u]) {
-	add_edge(u, arc->getD(), SPPRC_Graph_Arc_Prep(countEdges++, arc->getJitter(), arc->getDelay()), graphJitterMae);
-	add_edge(u, arc->getD(), arc->getJitter(), graphJitterSP);
-      }
+        if (!removed[u])
+            for (auto arc : arcs[u]) 
+                if (!removed[arc->getD()] || arc->getD() != 0) {
+                    add_edge(u, arc->getD(), SPPRC_Graph_Arc_Prep(countEdges++, arc->getJitter(), arc->getDelay()), graphJitterMae);
+                    add_edge(u, arc->getD(), arc->getJitter(), graphJitterSP);
+                }
 
     // Run the shortest path with resource constraints
     vector<vector<graph_traits<SPPRCGraphPrep>::edge_descriptor>> opt_solutions;
@@ -271,18 +271,15 @@ void Graph::SAE(string outputName) {
     vector<vector<int>> CSHP = vector<vector<int>>(n, vector<int>(n));
     BoostGraph graphJitterSP = BoostGraph(n);
     SPPRCGraphPrep graphDelay, graphJitter;
-    vector<int> distance = vector<int>(n);
-    vector<VertexDescriptor> predecessors = vector<VertexDescriptor>(n);
-    removed[0] = true;
     
-    for (i = 0; i < n; i++)
+    for (i = 1; i < n; i++)
         if (!removed[i])
             for (auto arc : arcs[i]) 
                 if (arc->getD() != 0 && !removed[arc->getD()] && !removedY[i][arc->getD()]) 
                     add_edge(i, arc->getD(), arc->getJitter(), graphJitterSP);
 
     for (i = 0; i < n; i++) {
-        if (removed[i]) continue;
+        //if (removed[i]) continue;
 
         distanceJitter = vector<int>(n);
 
